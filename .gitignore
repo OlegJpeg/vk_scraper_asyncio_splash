@@ -1,0 +1,6 @@
+*
+!.gitignore
+!requirements.txt
+!scraper.py
+!models.py
+!.git/
