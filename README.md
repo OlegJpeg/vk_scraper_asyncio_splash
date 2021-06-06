@@ -1,5 +1,5 @@
 <h1>Скрейпер для групп вконтакте</h1> 
-Теги: asyncio, splash, aiohttp
+*Тэги:* asyncio, splash, aiohttp
 <p></p>
 <div>
  <ul>
