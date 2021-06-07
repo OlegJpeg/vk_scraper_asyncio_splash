@@ -5,8 +5,9 @@ import re
 
 
 class Post:
-    def __init__(self, soup):
-        self.group_name = self._group_name(soup)
+    def __init__(self, soup, vk_group):
+        self.group_name = vk_group.name
+        self.group_id = vk_group.id
         self.number = self._number(soup)
         self.content = self._content(soup)
         self.date_published = self._date_published(soup)
@@ -17,14 +18,9 @@ class Post:
         self.comments = self._comments(soup)
         self.link = self._link(soup)
         self.album = self._album(soup)
-        self.is_ad = self._is_ad(soup)
+        self.has_source = self._has_source(soup)
         self.repost_from = self._repost_from(soup)
         self.images = self._images(soup)
-
-    @staticmethod
-    def _group_name(soup):
-        title = soup.find('title').text
-        return re.compile(r'.*\|\s(.*)\s\|').search(title).groups()[0]
 
     @staticmethod
     def _number(soup):
@@ -92,7 +88,7 @@ class Post:
             return
 
     @staticmethod
-    def _is_ad(soup):
+    def _has_source(soup):
         if soup.find('div', class_="Post__copyright"):
             return True
         else:
@@ -133,28 +129,51 @@ class Post:
     async def save_images(self, session):
         # saving images to a folder
         if self.images:
-            os.makedirs(os.path.join(self.group_name, 'files'), exist_ok=True)
+            os.makedirs(os.path.join(f'{self.group_name} - {self.group_id}', 'files'), exist_ok=True)
             for image in self.images:
                 async with session.get(image['url']) as r:
                     assert r.status == 200, f'{r.status}: {r.reason}. url: {r.url}'
                     pic = await r.read()
-                    with open(os.path.join(self.group_name,
+                    with open(os.path.join(f'{self.group_name} - {self.group_id}',
                                            'files',
                                            image['name']), 'wb') as file:
                         file.write(pic)
 
 
-class VkGroup:
-    def __init__(self, group_id, name):
-        self.id = group_id
-        self.name = name
+class GroupManager:
+    def __init__(self, soup, target_number):
+        self.id = self._id(soup)
+        self.name = self._name(soup)
+        self.latest_post = self._latest_post(soup)
+        self.target_number = target_number
+        self.error_504 = []
         self.posts = []
 
+    @staticmethod
+    def _id(soup):
+        element = soup.find('a', attrs={'class': 'wi_date'}).attrs['href']
+        return re.compile(r'wall-(\d*)_').search(element).groups()[0]
+
+    @staticmethod
+    def _name(soup):
+        element = soup.find('h2', attrs={'class': 'basisGroup__groupTitle op_header'})
+        return element.text.strip()
+
+    @staticmethod
+    def _latest_post(soup):
+        posts = soup.find_all('a', attrs={'class': 'post__anchor anchor'})
+        post_numbers = []
+        for post in posts:
+            post_numbers.append(int(re.compile(r'(\d*)$').search(post['name']).group()))
+        return max(post_numbers)
+
     def save_to_csv(self):
-        os.makedirs(self.name, exist_ok=True)
-        with open(os.path.join(self.name, 'data.csv'), 'w', newline='', encoding='utf-8') as file:
+        os.makedirs(f'{self.name} - {self.id}', exist_ok=True)
+        with open(os.path.join(f'{self.name} - {self.id}', 'data.csv'), 'w',
+                  newline='',
+                  encoding='utf-8') as file:
             output_writer = csv.writer(file)
-            for post in self.posts:
+            for post in self.posts[:self.target_number]:
                 # getting values of all attributes of Post, then writing them in file
                 data = [value for value in vars(post).values()]
                 output_writer.writerow(data)
